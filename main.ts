@@ -2,6 +2,13 @@
 // Converts Claude API format to OpenAI compatible format for Vercel AI Gateway
 // Version with load balancing for multiple API keys
 
+// Deno 全局对象声明（用于TypeScript类型检查）
+declare const Deno: {
+  env: {
+    get(key: string): string | undefined;
+  };
+};
+
 // --- Interfaces (保持不变) ---
 interface ClaudeMessage {
   role: "user" | "assistant";
@@ -36,21 +43,21 @@ interface OpenAIRequest {
 }
 
 // --- Constants with Load Balancing ---
-const VERCEL_API_URL = "https:xxxxxx/v1/chat/completions";
+// 从环境变量获取Vercel API URL
+const VERCEL_API_URL = Deno.env.get("VERCEL_API_URL") || "https://ai-gateway.vercel.sh/v1/chat/completions";
 
-// 多个API密钥用于负载均衡
-const VERCEL_API_KEYS = [
-  "apikeyxxxxx",
-  "xxxxxx", 
-  "xxxxx",
-  "xxxxxxx"
-];
+// 从环境变量获取多个API密钥用于负载均衡
+// 环境变量格式：VERCEL_API_KEYS="key1,key2,key3,key4"
+const VERCEL_API_KEYS_ENV = Deno.env.get("VERCEL_API_KEYS");
+const VERCEL_API_KEYS = VERCEL_API_KEYS_ENV 
+  ? VERCEL_API_KEYS_ENV.split(",").map(key => key.trim()).filter(key => key.length > 0)
+  : [];
 
 // Model mapping
 const MODEL_MAPPING: { [key: string]: string } = {
-  "claude-3-5-haiku-20241022": "模型名称xxxxxx",
-  "claude-sonnet-4-20250514": "模型名称xxxxx",
-  "claude-opus-4-20250514": "模型名称xxxxxx",
+  "claude-3-5-haiku-20241022": "anthropic/claude-3.5-haiku",
+  "claude-sonnet-4-20250514": "anthropic/claude-sonnet-4",
+  "claude-opus-4-20250514": "anthropic/claude-opus-4",
 };
 
 // --- Load Balancing Manager ---

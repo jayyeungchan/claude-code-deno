@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "lib": ["deno.ns", "deno.window"],
+    "strict": true
+  },
+  "tasks": {
+    "dev": "deno run --allow-net --allow-env main.ts",
+    "start": "deno run --allow-net --allow-env main.ts"
+  },
+  "imports": {},
+  "permissions": {
+    "net": true,
+    "env": true
+  }
+}
