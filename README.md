@@ -18,6 +18,19 @@ export VERCEL_API_URL="https://your-vercel-api-url/v1/chat/completions"
 export VERCEL_API_KEYS="key1,key2,key3,key4"
 ```
 
+### CUSTOM_AUTH_KEY（可选）
+设置自定义认证密钥，用于验证请求中的 Bearer token：
+```bash
+export CUSTOM_AUTH_KEY="your-secret-authentication-key"
+```
+
+**注意：** 如果设置了 `CUSTOM_AUTH_KEY`，所有对 `/v1/messages` 的请求都必须在 `Authorization` header 中包含正确的 Bearer token，格式为：
+```
+Authorization: Bearer your-secret-authentication-key
+```
+
+如果不设置此环境变量，则跳过认证验证。
+
 ## 运行服务
 
 ### 开发模式

@@ -53,6 +53,10 @@ const VERCEL_API_KEYS = VERCEL_API_KEYS_ENV
   ? VERCEL_API_KEYS_ENV.split(",").map(key => key.trim()).filter(key => key.length > 0)
   : [];
 
+// 从环境变量获取自定义认证密钥
+// 环境变量格式：CUSTOM_AUTH_KEY="your-secret-key"
+const CUSTOM_AUTH_KEY = Deno.env.get("CUSTOM_AUTH_KEY");
+
 // Model mapping
 const MODEL_MAPPING: { [key: string]: string } = {
   "claude-3-5-haiku-20241022": "anthropic/claude-3.5-haiku",
@@ -117,6 +121,33 @@ class ApiKeyManager {
 }
 
 const keyManager = new ApiKeyManager(VERCEL_API_KEYS);
+
+// --- 认证验证函数 ---
+/**
+ * 验证请求中的Bearer token是否与环境变量中设置的自定义密钥匹配
+ * @param request - HTTP请求对象
+ * @returns 如果认证成功返回true，否则返回false
+ */
+function validateBearerToken(request: Request): boolean {
+  // 如果没有设置自定义认证密钥，则跳过验证
+  if (!CUSTOM_AUTH_KEY) {
+    return true;
+  }
+
+  const authHeader = request.headers.get("Authorization");
+  if (!authHeader) {
+    return false;
+  }
+
+  // 检查是否为Bearer token格式
+  if (!authHeader.startsWith("Bearer ")) {
+    return false;
+  }
+
+  // 提取token并与环境变量中的密钥比较
+  const token = authHeader.substring(7); // 移除"Bearer "前缀
+  return token === CUSTOM_AUTH_KEY;
+}
 
 // --- 主函数：转换 Claude 请求到 OpenAI 请求 ---
 function convertClaudeToOpenAI(claudeRequest: ClaudeRequest): OpenAIRequest {
@@ -337,6 +368,22 @@ async function handleRequest(request: Request): Promise<Response> {
   }
 
   if (url.pathname === "/v1/messages" && request.method === "POST") {
+    // 验证Bearer token
+    if (!validateBearerToken(request)) {
+      return new Response(JSON.stringify({
+        error: {
+          type: "authentication_error",
+          message: "Invalid or missing Bearer token"
+        }
+      }), {
+        status: 401,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*"
+        }
+      });
+    }
+
     try {
       const claudeRequest: ClaudeRequest = await request.json();
       console.log("Received Claude request:", JSON.stringify(claudeRequest, null, 2));
