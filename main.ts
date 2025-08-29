@@ -407,19 +407,6 @@ async function handleRequest(request: Request): Promise<Response> {
             const decoder = new TextDecoder();
             let buffer = "";
             let toolCallStarted = false;
-            let streamClosed = false;
-
-            // 安全的enqueue函数，检查流状态
-            const safeEnqueue = (data: Uint8Array) => {
-              try {
-                if (!streamClosed) {
-                  controller.enqueue(data);
-                }
-              } catch (error) {
-                console.error("Error enqueueing data:", error);
-                streamClosed = true;
-              }
-            };
 
             try {
               while (true) {
@@ -431,8 +418,6 @@ async function handleRequest(request: Request): Promise<Response> {
                 buffer = lines.pop() || "";
 
                 for (const line of lines) {
-                  if (streamClosed) break;
-                  
                   if (line.trim().startsWith('data: ')) {
                     const dataStr = line.trim().substring(5).trim();
                     if (dataStr === '[DONE]') continue;
@@ -441,49 +426,28 @@ async function handleRequest(request: Request): Promise<Response> {
                       const openaiChunk = JSON.parse(dataStr);
                       const claudeEvent = convertOpenAIStreamToClaude(openaiChunk);
                       
-                      if (claudeEvent && !streamClosed) {
+                      if (claudeEvent) {
                          if (claudeEvent.type === 'content_block_start' && !toolCallStarted) {
-                            safeEnqueue(new TextEncoder().encode(`event: message_start\ndata: ${JSON.stringify({type: "message", message: {id: openaiChunk.id, type: "message", role: "assistant", content: [], model: openaiChunk.model, stop_reason: null, stop_sequence: null, usage: {input_tokens: 0, output_tokens: 0}}})}\n\n`));
+                            controller.enqueue(new TextEncoder().encode(`event: message_start\ndata: ${JSON.stringify({type: "message", message: {id: openaiChunk.id, type: "message", role: "assistant", content: [], model: openaiChunk.model, stop_reason: null, stop_sequence: null, usage: {input_tokens: 0, output_tokens: 0}}})}\n\n`));
                             toolCallStarted = true;
                          }
 
-                        if (!streamClosed) {
-                          safeEnqueue(new TextEncoder().encode(`event: ${claudeEvent.type === 'content_block_start' || claudeEvent.type === 'content_block_delta' ? 'content_block_delta' : 'message_delta'}\ndata: ${JSON.stringify(claudeEvent)}\n\n`));
-                        }
+                        controller.enqueue(new TextEncoder().encode(`event: ${claudeEvent.type === 'content_block_start' || claudeEvent.type === 'content_block_delta' ? 'content_block_delta' : 'message_delta'}\ndata: ${JSON.stringify(claudeEvent)}\n\n`));
                       }
                     } catch (e) {
                       console.error("Error parsing stream chunk:", dataStr, e);
-                      // 继续处理其他chunks，不要因为一个解析错误就停止整个流
                     }
                   }
                 }
-                
-                if (streamClosed) break;
               }
-              
               // 发送结束信号
-              if (!streamClosed) {
-                const stopEvent = { type: "message_stop", "anthropic-internal-tool-use-end": toolCallStarted };
-                safeEnqueue(new TextEncoder().encode(`event: message_stop\ndata: ${JSON.stringify(stopEvent)}\n\n`));
-              }
+              const stopEvent = { type: "message_stop", "anthropic-internal-tool-use-end": toolCallStarted };
+              controller.enqueue(new TextEncoder().encode(`event: message_stop\ndata: ${JSON.stringify(stopEvent)}\n\n`));
             } catch (error) {
               console.error("Stream processing error:", error);
-              if (!streamClosed) {
-                try {
-                  controller.error(error);
-                } catch (e) {
-                  console.error("Error setting controller error:", e);
-                }
-                streamClosed = true;
-              }
+              controller.error(error);
             } finally {
-              if (!streamClosed) {
-                try {
-                  controller.close();
-                } catch (e) {
-                  console.error("Error closing controller:", e);
-                }
-              }
+              controller.close();
             }
           }
         });
